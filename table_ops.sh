@@ -144,6 +144,45 @@ drop_table() {
 
 }
 insert_into_table() { echo "Coming soon - Karim's job"; }
-select_from_table() { echo "Coming soon - Mohamed's job (Day 2)"; }
+select_from_table() { 
+local TABLE_DIR="$DB_DIR/$CURRENT_DB"
+local separator=""
+echo ""
+read -p "please enter table name: " table_name
+table_name=$(echo "$table_name" | tr ' ' '_')
+local meta_file="$TABLE_DIR/$table_name.meta"
+local data_file="$TABLE_DIR/$table_name.data"
+if [[ ! -f "$meta_file" ]]; then 
+    echo "there is no table with this name"
+    return 
+fi
+while IFS='|' read -r col_name col_type col_pk
+do
+    printf "%-15s" "$col_name"
+    separator+="---------------"
+    done < "$meta_file"
+echo ""
+echo "$separator"
+if [[ ! -s "$data_file" ]]; then 
+echo "no rows"
+return
+fi
+
+while IFS= read -r row 
+do
+echo "$row" | awk -F '|' '{
+            for(i=1; i<=NF; i++){
+                printf "%-15s", $i
+            }
+            print ""
+        }'
+    done < "$data_file"
+
+    echo ""
+    local count
+    count=$(awk 'END{print NR}' "$data_file")
+    echo "$count row(s) found."
+
+ }
 delete_from_table() { echo "Coming soon - Karim's job"; }
-update_table() { echo "Coming soon - Karim's job"; }
+update_table() { echo "Coming soon"; }
