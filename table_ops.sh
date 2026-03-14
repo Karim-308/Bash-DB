@@ -183,6 +183,105 @@ echo "$row" | awk -F '|' '{
     count=$(awk 'END{print NR}' "$data_file")
     echo "$count row(s) found."
 
+
  }
+
 delete_from_table() { echo "Coming soon - Karim's job"; }
-update_table() { echo "Coming soon"; }
+
+
+update_table() { 
+    local TABLE_DIR="$DB_DIR/$CURRENT_DB"
+    echo ""
+    read -p "please enter table name to update: " table_name
+    table_name=$(echo "$table_name" | tr ' ' '_')
+    
+    local meta_file="$TABLE_DIR/$table_name.meta"
+    local data_file="$TABLE_DIR/$table_name.data"
+    
+    if [[ ! -f "$meta_file" ]]; then 
+        echo "there is no table with this name"
+        return 
+    fi
+
+    local pk_name=""
+    local pk_col_num=0
+    local col_counter=1
+
+    while IFS='|' read -r col_name col_type col_pk
+    do
+        if [[ "$col_pk" == "PK" ]]; then
+            pk_name="$col_name"
+            pk_col_num=$col_counter
+            break
+        fi
+        ((col_counter++))
+    done < "$meta_file"
+
+    if [[ $pk_col_num -eq 0 ]]; then
+        echo "Error: This table doesn't have a Primary Key."
+        return
+    fi
+    
+    echo ""
+    read -p "Enter the $pk_name of the row to update: " pk_val
+    
+    if [[ -z "$pk_val" ]]; then
+        echo "Error: $pk_name cannot be empty."
+        return
+    fi
+    
+    local target_row
+    target_row=$(awk -F '|' -v col="$pk_col_num" -v search_val="$pk_val" '$col == search_val {print $0}' "$data_file")
+
+    if [[ -z "$target_row" ]]; then
+        echo "Error: Record with $pk_name = $pk_val not found."
+        return
+    fi
+    # ==========================================================
+
+    local new_row=""
+    col_counter=1 
+
+    echo ""
+    echo "--- Press Enter to keep the old value ---"
+
+    while IFS='|' read -r col_name col_type col_pk
+    do
+        local current_val=$(echo "$target_row" | awk -F '|' -v i="$col_counter" '{print $i}')
+
+        if [[ "$col_counter" -eq "$pk_col_num" ]]; then
+            new_row+="$current_val|"
+        else
+            read -p "Enter new $col_name ($col_type) [Old: $current_val]: " new_val
+            
+            if [[ -z "$new_val" ]]; then
+                new_row+="$current_val|"
+            else
+                new_row+="$new_val|"
+            fi
+        fi
+        
+        ((col_counter++))
+    done < "$meta_file"
+
+    new_row="${new_row%|}"
+    
+    echo "New Row will be: $new_row"
+
+    local temp_file="$TABLE_DIR/$table_name.tmp"
+    touch "$temp_file"
+
+    while IFS= read -r row
+    do
+        if [[ "$row" == "$target_row" ]]; then
+            echo "$new_row" >> "$temp_file"   
+        else
+            echo "$row" >> "$temp_file"     
+        fi
+    done < "$data_file"
+
+    mv "$temp_file" "$data_file"
+    
+    echo ""
+    echo "Row updated successfully! "
+}
