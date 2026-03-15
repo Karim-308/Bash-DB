@@ -11,6 +11,7 @@ is_number(){
     fi 
 }
 
+
 is_float(){
     local val="$1"
     if [[ "$val" =~ ^[0-9]+\.?[0-9]*$ ]];then
@@ -18,16 +19,12 @@ is_float(){
     else
     return 1
     fi 
+
 }
 
-is_float(){
+has_reserved_delimiter(){
     local val="$1"
-    if [[ "$val" =~ ^[0-9]+\.?[0-9]*$ ]];then
-    return 0
-    else
-    return 1
-    fi 
-
+    [[ "$val" == *"|"* ]]
 }
 
 create_table() {
@@ -80,6 +77,12 @@ create_table() {
             rm -f "$meta_file"
             return 
         fi
+
+        if [[ -f "$meta_file" ]] && awk -F'|' -v name="$col_name" '$1 == name { found=1; exit } END { exit !found }' "$meta_file"; then
+            echo "duplicate column name"
+            rm -f "$meta_file"
+            return
+        fi
         
         read -p "please enter column type (int, string, float): " col_type
         
@@ -105,6 +108,12 @@ create_table() {
         
         echo "$col_name|$col_type|$col_pk" >> "$meta_file"
     done
+
+    if [[ "$pk_flag" == "no" ]]; then
+        echo "a primary key is required"
+        rm -f "$meta_file"
+        return
+    fi
     
     touch "$TABLE_DIR/$table_name.data"
     echo "the '$table_name' table has been created successfully"
@@ -204,6 +213,10 @@ insert_into_table() {
                 read -p "Enter value for ${col_names[$j]} (${col_types[$j]}): " value
                 if [[ -z "$value" ]]; then
                     echo "Empty value. Please try again."
+                    continue
+                fi
+                if has_reserved_delimiter "$value"; then
+                    echo "character '|' is not allowed in values."
                     continue
                 fi
                 if [[ "${col_types[$j]}" == "int" ]]; then
@@ -358,16 +371,18 @@ update_table() {
 
     local pk_name=""
     local pk_col_num=0
-    local col_counter=1
+    local -a col_names col_types col_pks
 
     while IFS='|' read -r col_name col_type col_pk
     do
+        col_names+=("$col_name")
+        col_types+=("$col_type")
+        col_pks+=("$col_pk")
+
         if [[ "$col_pk" == "PK" ]]; then
             pk_name="$col_name"
-            pk_col_num=$col_counter
-            break
+            pk_col_num=${#col_names[@]}
         fi
-        ((col_counter++))
     done < "$meta_file"
 
     if [[ $pk_col_num -eq 0 ]]; then
@@ -393,41 +408,42 @@ update_table() {
     ###############
 
     local new_row=""
-    col_counter=1 
 
     echo ""
     echo "--- Press Enter to keep the old value ---"
 
-    while IFS='|' read -r col_name col_type col_pk
+    for (( i=0; i<${#col_names[@]}; i++ ))
     do
-        local current_val=$(echo "$target_row" | awk -F '|' -v i="$col_counter" '{print $i}')
+        local col_num=$((i + 1))
+        local current_val
+        current_val=$(echo "$target_row" | awk -F '|' -v i="$col_num" '{print $i}')
 
-        if [[ "$col_counter" -eq "$pk_col_num" ]]; then
+        if [[ "$col_num" -eq "$pk_col_num" ]]; then
             new_row+="$current_val|"
         else
-            read -p "Enter new $col_name ($col_type) [Old: $current_val]: " new_val
+            read -p "Enter new ${col_names[$i]} (${col_types[$i]}) [Old: $current_val]: " new_val
             
             if [[ -z "$new_val" ]]; then
                 new_row+="$current_val|"
             else
-                if [[ "$col_type" == "int" ]] && ! is_number "$new_val"; then
-                    echo "invalid input for $col_name. it must be an integer."
+                if has_reserved_delimiter "$new_val"; then
+                    echo "character '|' is not allowed in values."
                     return
                 fi
-                if [[ "$col_type" == "float" ]] && ! is_float "$new_val"; then
-                    echo "invalid input for $col_name. it must be a number."
+                if [[ "${col_types[$i]}" == "int" ]] && ! is_number "$new_val"; then
+                    echo "invalid input for ${col_names[$i]}. it must be an integer."
+                    return
+                fi
+                if [[ "${col_types[$i]}" == "float" ]] && ! is_float "$new_val"; then
+                    echo "invalid input for ${col_names[$i]}. it must be a number."
                     return
                 fi
                 new_row+="$new_val|"
             fi
         fi
-        
-        ((col_counter++))
-    done < "$meta_file"
+    done
 
     new_row="${new_row%|}"
-    
-    echo "New Row will be: $new_row"
 
     local temp_file="$TABLE_DIR/$table_name.tmp"
     touch "$temp_file"
