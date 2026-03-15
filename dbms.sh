@@ -1,6 +1,6 @@
 #!/bin/bash 
 shopt -s extglob 
-# Types supported: int, string, float
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)" 
 DB_DIR="$SCRIPT_DIR/.databases"
 source "$SCRIPT_DIR/table_ops.sh"
