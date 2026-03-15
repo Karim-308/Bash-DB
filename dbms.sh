@@ -1,5 +1,6 @@
 #!/bin/bash 
 shopt -s extglob 
+# Types supported: int, string, float
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)" 
 DB_DIR="$SCRIPT_DIR/.databases"
 source "$SCRIPT_DIR/table_ops.sh"
@@ -26,6 +27,7 @@ is_valid_name(){
 create_database(){
     echo -n "please enter database name: " 
     read db_name 
+    db_name=$(echo "$db_name" | tr ' ' '_')
     
     if ! is_valid_name "$db_name" ;then 
         echo "invalid database name"
@@ -42,22 +44,24 @@ create_database(){
 }
 
 list_databases(){
+    local found="no"
     echo ""
     echo "=========================="
     echo "        DATABASES        "
     echo "=========================="
     echo ""
-    if [[ -z $(ls -A "$DB_DIR"/) ]]; then 
-        echo "there are no databases"
-        return
-    fi
-
+    
     for folder in "$DB_DIR"/*/
     do
         if [[ -d "$folder" ]];then 
             echo "$(basename "$folder")"
+            found="yes"
         fi
     done
+    
+    if [[ "$found" == "no" ]]; then
+        echo "there are no databases"
+    fi
 }
 
 connect_database(){
@@ -67,6 +71,7 @@ connect_database(){
     echo "=========================="
     echo ""
     read -p "please enter database name: " db_name
+    db_name=$(echo "$db_name" | tr ' ' '_')
 
     if [[ ! -d "$DB_DIR/$db_name" ]];then 
         echo "there is no database with this name"
@@ -88,6 +93,7 @@ drop_database(){
     echo "=========================="
     echo ""
     read -p "please enter database name: " db_name
+    db_name=$(echo "$db_name" | tr ' ' '_')
 
     if [[ ! -d "$DB_DIR/$db_name" ]];then 
         echo "there is no database with this name"
