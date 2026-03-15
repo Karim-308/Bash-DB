@@ -11,6 +11,16 @@ is_number(){
 
 }
 
+is_float(){
+    local val="$1"
+    if [[ "$val" =~ ^[0-9]+\.?[0-9]*$ ]];then
+    return 0
+    else
+    return 1
+    fi 
+
+}
+
 create_table() {
     local TABLE_DIR="$DB_DIR/$CURRENT_DB"
     local pk_flag="no"  
@@ -143,7 +153,81 @@ drop_table() {
     fi
 
 }
-insert_into_table() { echo "Coming soon - Karim's job"; }
+insert_into_table() {
+
+    local TABLE_DIR="$DB_DIR/$CURRENT_DB"
+    read -p "please enter table name: " table_name
+    table_name=$(echo "$table_name" | tr ' ' '_')
+    
+    local meta_file="$TABLE_DIR/$table_name.meta"
+    local data_file="$TABLE_DIR/$table_name.data"
+    
+    if [[ ! -f "$meta_file" ]]; then
+        echo "there is no table with this name"
+        return
+    fi
+
+    read -p "how many rows you want to insert? " num_rows
+    if ! is_number "$num_rows" || (( num_rows < 1 )); then
+        echo "invalid number of rows"
+        return
+    fi
+
+    local -a col_names col_types col_pks
+    while IFS='|' read -r name type pk; do
+        col_names+=("$name")
+        col_types+=("$type")
+        col_pks+=("$pk")
+    done < "$meta_file"
+
+    for (( i=1; i<=num_rows; i++ ))
+    do
+        local row=""
+
+        for (( j=0; j<${#col_names[@]}; j++ )); do
+            local col_index=$((j+1))
+            local value=""
+            while true; do
+                read -p "Enter value for ${col_names[$j]} (${col_types[$j]}): " value
+                if [[ -z "$value" ]]; then
+                    echo "Empty value. Please try again."
+                    continue
+                fi
+                if [[ "${col_types[$j]}" == "int" ]]; then
+                    if ! is_number "$value"; then
+                        echo "Input type mismatch. Expected an integer. Please try again."
+                        continue
+                    fi
+                fi
+                if [[ "${col_types[$j]}" == "float" ]]; then
+                    if ! is_float "$value"; then
+                        echo "Input type mismatch. Expected a float. Please try again."
+                        continue
+                    fi
+                fi
+
+                if [[ "${col_pks[$j]}" == "PK" ]]; then
+                    local duplicate
+                    duplicate=$(awk -F'|' -v val="$value" -v col="$col_index" '$col == val' "$data_file")
+                    if [[ -n "$duplicate" ]]; then
+                        echo "duplicate PK"
+                        continue
+                    fi
+                fi
+
+                break
+                done
+                row+="$value|"
+
+                done
+
+        echo "${row%|}" >> "$data_file"
+        echo "Row $i inserted successfully!"
+    done
+
+    echo ""
+    echo "$num_rows row(s) inserted successfully into $table_name."    
+}
 select_from_table() { 
 local TABLE_DIR="$DB_DIR/$CURRENT_DB"
 local separator=""
@@ -186,8 +270,62 @@ echo "$row" | awk -F '|' '{
 
  }
 
-delete_from_table() { echo "Coming soon - Karim's job"; }
+delete_from_table() {
+    local TABLE_DIR="$DB_DIR/$CURRENT_DB"
+    echo ""
+    read -p "please enter table name to delete from: " table_name
+    table_name=$(echo "$table_name" | tr ' ' '_')
 
+    local meta_file="$TABLE_DIR/$table_name.meta"
+    local data_file="$TABLE_DIR/$table_name.data"
+
+    if [[ ! -f "$meta_file" ]]; then
+        echo "there is no table with this name"
+        return
+    fi
+
+    local pk_name=""
+    local pk_col_num=0
+    local col_counter=1
+
+    while IFS='|' read -r col_name col_type col_pk
+    do
+        if [[ "$col_pk" == "PK" ]]; then
+            pk_name="$col_name"
+            pk_col_num=$col_counter
+            break
+        fi
+        ((col_counter++))
+    done < "$meta_file"
+
+    if [[ $pk_col_num -eq 0 ]]; then
+        echo "this table doesn't have a primary key."
+        return
+    fi
+
+    echo ""
+    read -p "Enter the $pk_name of the row to delete: " pk_val
+
+    if [[ -z "$pk_val" ]]; then
+        echo "$pk_name cannot be empty."
+        return
+    fi
+
+    local target_row
+    target_row=$(awk -F '|' -v col="$pk_col_num" -v search_val="$pk_val" '$col == search_val {print $0}' "$data_file")
+
+    if [[ -z "$target_row" ]]; then
+        echo "row with $pk_name = $pk_val not found."
+        return
+    fi
+
+    awk -F'|' -v col="$pk_col_num" -v val="$pk_val" '$col != val' "$data_file" > "$TABLE_DIR/$table_name.tmp"
+    mv "$TABLE_DIR/$table_name.tmp" "$data_file"
+
+    echo ""
+    echo "row deleted successfully!"
+
+}
 
 update_table() { 
     local TABLE_DIR="$DB_DIR/$CURRENT_DB"
