@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 shopt -s extglob
-# Types supported: int, string, float
+# supported datatypes: int, string, float
 
 is_number(){
     local val="$1"
@@ -252,7 +252,7 @@ update_table() {
         echo "Error: Record with $pk_name = $pk_val not found."
         return
     fi
-    # ==========================================================
+    ###############
 
     local new_row=""
     col_counter=1 
