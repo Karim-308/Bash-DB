@@ -1,5 +1,6 @@
 #!/usr/bin/bash
 shopt -s extglob
+# supported datatypes: int, string, float
 
 is_number(){
     local val="$1"
@@ -8,7 +9,15 @@ is_number(){
     else
     return 1
     fi 
+}
 
+is_float(){
+    local val="$1"
+    if [[ "$val" =~ ^[0-9]+\.?[0-9]*$ ]];then
+    return 0
+    else
+    return 1
+    fi 
 }
 
 is_float(){
@@ -62,11 +71,13 @@ create_table() {
         
         if [[ -z "$col_name" ]]; then 
             echo "column name can't be empty"
+            rm -f "$meta_file"
             return 
         fi
         
         if ! is_valid_name "$col_name"; then 
             echo "invalid column name"
+            rm -f "$meta_file"
             return 
         fi
         
@@ -74,6 +85,7 @@ create_table() {
         
         if [[ "$col_type" != "int" && "$col_type" != "string" && "$col_type" != "float" ]]; then
             echo "invalid column type"
+            rm -f "$meta_file"
             return 
         fi
         
@@ -81,6 +93,7 @@ create_table() {
             read -p "is the column a pk: (Y/N) " is_pk
             if [[ "$is_pk" != "Y" && "$is_pk" != "N" && "$is_pk" != "y" && "$is_pk" != "n" ]]; then
                 echo "invalid choice"
+                rm -f "$meta_file"
                 return 
             fi
             
@@ -229,32 +242,36 @@ insert_into_table() {
     echo "$num_rows row(s) inserted successfully into $table_name."    
 }
 select_from_table() { 
-local TABLE_DIR="$DB_DIR/$CURRENT_DB"
-local separator=""
-echo ""
-read -p "please enter table name: " table_name
-table_name=$(echo "$table_name" | tr ' ' '_')
-local meta_file="$TABLE_DIR/$table_name.meta"
-local data_file="$TABLE_DIR/$table_name.data"
-if [[ ! -f "$meta_file" ]]; then 
-    echo "there is no table with this name"
-    return 
-fi
-while IFS='|' read -r col_name col_type col_pk
-do
-    printf "%-15s" "$col_name"
-    separator+="---------------"
-    done < "$meta_file"
-echo ""
-echo "$separator"
-if [[ ! -s "$data_file" ]]; then 
-echo "no rows"
-return
-fi
+    local TABLE_DIR="$DB_DIR/$CURRENT_DB"
+    local separator=""
+    echo ""
+    read -p "please enter table name: " table_name
+    table_name=$(echo "$table_name" | tr ' ' '_')
+    local meta_file="$TABLE_DIR/$table_name.meta"
+    local data_file="$TABLE_DIR/$table_name.data"
+    
+    if [[ ! -f "$meta_file" ]]; then 
+        echo "there is no table with this name"
+        return 
+    fi
 
-while IFS= read -r row 
-do
-echo "$row" | awk -F '|' '{
+    while IFS='|' read -r col_name col_type col_pk
+    do
+        printf "%-15s" "$col_name"
+        separator+="---------------"
+    done < "$meta_file"
+    
+    echo ""
+    echo "$separator"
+    
+    if [[ ! -s "$data_file" ]]; then 
+        echo "no rows"
+        return
+    fi
+
+    while IFS= read -r row 
+    do
+        echo "$row" | awk -F '|' '{
             for(i=1; i<=NF; i++){
                 printf "%-15s", $i
             }
@@ -266,8 +283,6 @@ echo "$row" | awk -F '|' '{
     local count
     count=$(awk 'END{print NR}' "$data_file")
     echo "$count row(s) found."
-
-
  }
 
 delete_from_table() {
@@ -375,7 +390,7 @@ update_table() {
         echo "Error: Record with $pk_name = $pk_val not found."
         return
     fi
-    # ==========================================================
+    ###############
 
     local new_row=""
     col_counter=1 
@@ -395,6 +410,14 @@ update_table() {
             if [[ -z "$new_val" ]]; then
                 new_row+="$current_val|"
             else
+                if [[ "$col_type" == "int" ]] && ! is_number "$new_val"; then
+                    echo "invalid input for $col_name. it must be an integer."
+                    return
+                fi
+                if [[ "$col_type" == "float" ]] && ! is_float "$new_val"; then
+                    echo "invalid input for $col_name. it must be a number."
+                    return
+                fi
                 new_row+="$new_val|"
             fi
         fi
@@ -411,7 +434,8 @@ update_table() {
 
     while IFS= read -r row
     do
-        if [[ "$row" == "$target_row" ]]; then
+        local current_row_pk=$(echo "$row" | awk -F '|' -v col="$pk_col_num" '{print $col}')
+        if [[ "$current_row_pk" == "$pk_val" ]]; then
             echo "$new_row" >> "$temp_file"   
         else
             echo "$row" >> "$temp_file"     
